@@ -110,6 +110,13 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   # emissions from MAC curves (non-energy emissions)
   vm_emiMacSector <- readGDX(gdx, "vm_emiMacSector", field = "l", restore_zeros = FALSE)[, t, ]
   p_co2lucSub <- readGDX(gdx, "p_co2lucSub", restore_zeros = TRUE, react = "silent")[, t, ]
+  if (is.null(p_co2lucSub)) {
+    warning("Variable 'p_co2lucSub' not found in GDX. ",
+            "The following outputs will be zero: ",
+            "Emi|CO2|Land-Use Change|Negative|Intentional*, ",
+            "Emi|CO2|Land-Use Change|Negative|Unintentional, Emi|CO2|Land-Use Change|Positive, ",
+            "Emi|CO2|Land-Use Change|Negative, Emi|CO2|Gross|Land-Use Change (all land-use change subcategories)")
+  }
   # F-Gases
   vm_emiFgas <- readGDX(gdx, "vm_emiFgas", field = "l", restore_zeros = FALSE)[, t, ]
   # Emissions from MACs (currently: all emissions outside of energy CO2 emissions)
@@ -313,6 +320,10 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
     restore_zeros = FALSE, react = "silent"
   )[, t, ]
   if (is.null(v37_plasticsCarbon)) {
+    warning("Variable 'v37_plasticsCarbon' not found in GDX. The following outputs will be zero: ",
+            "Carbon Management|Materials|+|Plastics, ",
+            "Carbon Management|Materials|Plastics|Waste|++|Incineration, ",
+            "Carbon Management|Materials|Plastics|Waste|++|Other destination")
     v37_plasticsCarbon <- new.magpie(getRegions(vm_demFeSector), t, "c", fill = 0)
   }
 
@@ -327,6 +338,11 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
       fill = 0, dim = 1
     )
   } else {
+    if (is.null(vm_emiNonFosNonIncineratedPlastics)) {
+      warning("Variable 'v37_emiNonFosNonIncineratedPlastics' or 'vm_emiNonFosNonIncineratedPlastics' not found in GDX. ",
+              "The following outputs will be zero: ",
+              "Emi|CO2|Waste|+|Non-Incinerated Plastic, Emi|CO2|+|Waste")
+    }
     vm_emiNonFosNonIncineratedPlastics <- NULL
   }
 
@@ -341,6 +357,11 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
       fill = 0, dim = 1
     )
   } else {
+    if (is.null(v37_emiNonPlasticWaste)) {
+      warning("Variable 'v37_emiNonPlasticWaste' not found in GDX. ",
+              "The following outputs will be zero: ",
+              "Emi|CO2|Waste|+|Non-plastic Waste, Emi|CO2|+|Waste")
+    }
     v37_emiNonPlasticWaste <- NULL
   }
 
@@ -353,6 +374,12 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   if (!is.null(vm_incinerationEmi) && !is.null(v37_plasticsCarbon)) {
     vm_incinerationEmi <- magclass::matchDim(vm_incinerationEmi, v37_plasticsCarbon, fill = 0)
   } else {
+    if (is.null(vm_incinerationEmi)) {
+      warning("Variable 'vm_incinerationEmi' or 'v37_incinerationEmi' not found in GDX. ",
+              "The following outputs will be zero: ",
+              "Emi|CO2|Energy|Waste*, Carbon Management|Materials|Plastics|Waste*, ",
+              "Emi|CO2|CDR|BECCS*Waste*, Emi|CO2|CDR|Synthetic Fuel*Waste* (all waste incineration related outputs)")
+    }
     vm_incinerationEmi <- NULL
   }
 
@@ -408,11 +435,17 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   # read in total feedstocks carbon
   v37_feedstocksCarbon <- readGDX(gdx, "v37_feedstocksCarbon", field = "l", restore_zeros = FALSE, spatial = 2, react = "silent")
   if (is.null(v37_feedstocksCarbon)) {
+    warning("Variable 'v37_feedstocksCarbon' not found in GDX. ",
+            "The following outputs will be zero: ",
+            "Carbon Management|Materials|+|Non-Plastics, Carbon Management|Materials|Non-Plastics*, ",
+            "Emi|CO2|pre-CCS|Industrial Processes|Feedstocks* (all feedstock-related outputs)")
     v37_feedstocksCarbon <- new.magpie(getRegions(vm_demFeSector), getYears(vm_demFeSector), "c", fill = 0)
   }
   # read in share of non-plastics carbon that gets emitted
   cm_nonPlasticFeedstockEmiShare_tmp <- readGDX(gdx, "cm_nonPlasticFeedstockEmiShare", react = "silent")
   cm_nonPlasticFeedstockEmiShare <- if (is.null(cm_nonPlasticFeedstockEmiShare_tmp)) {
+    warning("Variable 'cm_nonPlasticFeedstockEmiShare' not found in GDX. Using default value 1. ",
+            "Affected outputs: Carbon Management|Materials|Non-Plastics|+|Incineration and |+|Other destination")
     1
   } else {
     as.vector(cm_nonPlasticFeedstockEmiShare_tmp)
@@ -420,6 +453,8 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   # read in share of plastics in feedstocks
   s37_plasticsShare_tmp <- readGDX(gdx, "s37_plasticsShare", react = "silent")
   s37_plasticsShare <- if (is.null(s37_plasticsShare_tmp)) {
+    warning("Variable 's37_plasticsShare' not found in GDX. Using default value 0. ",
+            "Affected outputs: Carbon Management|Materials|+|Non-Plastics and related subcategories")
     0
   } else {
     as.vector(s37_plasticsShare_tmp)

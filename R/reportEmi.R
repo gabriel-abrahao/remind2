@@ -312,26 +312,37 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
     field = "l", temporal = 1, spatial = 2,
     restore_zeros = FALSE, react = "silent"
   )[, t, ]
+  if (is.null(v37_plasticsCarbon)) {
+    v37_plasticsCarbon <- new.magpie(getRegions(vm_demFeSector), t, "c", fill = 0)
+  }
 
   vm_emiNonFosNonIncineratedPlastics <- readGDX(gdx, c("v37_emiNonFosNonIncineratedPlastics", "vm_emiNonFosNonIncineratedPlastics"),
     field = "l",
     restore_zeros = FALSE, react = "silent"
   )[, t, ]
 
-  vm_emiNonFosNonIncineratedPlastics <- magclass::matchDim(vm_emiNonFosNonIncineratedPlastics,
-    v37_plasticsCarbon,
-    fill = 0, dim = 1
-  )
+  if (!is.null(vm_emiNonFosNonIncineratedPlastics) && !is.null(v37_plasticsCarbon)) {
+    vm_emiNonFosNonIncineratedPlastics <- magclass::matchDim(vm_emiNonFosNonIncineratedPlastics,
+      v37_plasticsCarbon,
+      fill = 0, dim = 1
+    )
+  } else {
+    vm_emiNonFosNonIncineratedPlastics <- NULL
+  }
 
   v37_emiNonPlasticWaste <- readGDX(gdx, "v37_emiNonPlasticWaste",
     field = "l",
     restore_zeros = FALSE, react = "silent"
   )[, t, ]
 
-  v37_emiNonPlasticWaste <- magclass::matchDim(v37_emiNonPlasticWaste,
-    v37_plasticsCarbon,
-    fill = 0, dim = 1
-  )
+  if (!is.null(v37_emiNonPlasticWaste) && !is.null(v37_plasticsCarbon)) {
+    v37_emiNonPlasticWaste <- magclass::matchDim(v37_emiNonPlasticWaste,
+      v37_plasticsCarbon,
+      fill = 0, dim = 1
+    )
+  } else {
+    v37_emiNonPlasticWaste <- NULL
+  }
 
   vm_incinerationEmi <- readGDX(gdx, c("vm_incinerationEmi", "v37_incinerationEmi"),
     field = "l",
@@ -339,7 +350,11 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
     react = "silent"
   )[, t, ]
 
-  vm_incinerationEmi <- magclass::matchDim(vm_incinerationEmi, v37_plasticsCarbon, fill = 0)
+  if (!is.null(vm_incinerationEmi) && !is.null(v37_plasticsCarbon)) {
+    vm_incinerationEmi <- magclass::matchDim(vm_incinerationEmi, v37_plasticsCarbon, fill = 0)
+  } else {
+    vm_incinerationEmi <- NULL
+  }
 
 
   vm_incinerationCCS <- readGDX(gdx, "vm_incinerationCCS",
@@ -350,21 +365,25 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
 
   if (is.null(vm_incinerationCCS)) {
     rm("vm_incinerationCCS")
-  } else {
+  } else if (!is.null(vm_incinerationEmi)) {
     vm_incinerationCCS <- magclass::matchDim(vm_incinerationCCS, vm_incinerationEmi)
+  } else {
+    rm("vm_incinerationCCS")
   }
 
-  vm_nonIncineratedPlastics <- readGDX(gdx, "vm_nonIncineratedPlastics",
+  vm_nonIncineratedPlastics_tmp <- readGDX(gdx, "vm_nonIncineratedPlastics",
     field = "l", restore_zeros = FALSE,
     spatial = 2, react = "silent"
-  )[, t, ]
+  )
+  vm_nonIncineratedPlastics <- if (is.null(vm_nonIncineratedPlastics_tmp)) NULL else vm_nonIncineratedPlastics_tmp[, t, ]
 
-  v37_plasticWaste <- readGDX(gdx, "v37_plasticWaste",
+  v37_plasticWaste_tmp <- readGDX(gdx, "v37_plasticWaste",
     field = "l",
     restore_zeros = FALSE,
     spatial = 2,
     react = "silent"
-  )[, t, ]
+  )
+  v37_plasticWaste <- if (is.null(v37_plasticWaste_tmp)) NULL else v37_plasticWaste_tmp[, t, ]
 
   pm_incinerationRate <- readGDX(gdx, "pm_incinerationRate",
     field = "l",
@@ -374,21 +393,37 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   )[, t, ]
 
   # replace NA by 0
-  pm_incinerationRate[is.na(pm_incinerationRate)] <- 0
+  if (!is.null(pm_incinerationRate)) {
+    pm_incinerationRate[is.na(pm_incinerationRate)] <- 0
+  }
 
-  if (is.null(vm_nonIncineratedPlastics)) {
+  if (is.null(vm_nonIncineratedPlastics) && !is.null(pm_incinerationRate) && !is.null(v37_plasticWaste)) {
     vm_nonIncineratedPlastics <- (1 - pm_incinerationRate) * v37_plasticWaste
+  }
+  if (is.null(vm_nonIncineratedPlastics)) {
+    vm_nonIncineratedPlastics <- new.magpie(getRegions(vm_demFeSector), t, fill = 0)
   }
 
 
   # read in total feedstocks carbon
-  v37_feedstocksCarbon <- readGDX(gdx, "v37_feedstocksCarbon", field = "l", restore_zeros = FALSE, spatial = 2)
+  v37_feedstocksCarbon <- readGDX(gdx, "v37_feedstocksCarbon", field = "l", restore_zeros = FALSE, spatial = 2, react = "silent")
+  if (is.null(v37_feedstocksCarbon)) {
+    v37_feedstocksCarbon <- new.magpie(getRegions(vm_demFeSector), getYears(vm_demFeSector), "c", fill = 0)
+  }
   # read in share of non-plastics carbon that gets emitted
-  cm_nonPlasticFeedstockEmiShare <- readGDX(gdx, "cm_nonPlasticFeedstockEmiShare") %>%
-    as.vector()
+  cm_nonPlasticFeedstockEmiShare_tmp <- readGDX(gdx, "cm_nonPlasticFeedstockEmiShare", react = "silent")
+  cm_nonPlasticFeedstockEmiShare <- if (is.null(cm_nonPlasticFeedstockEmiShare_tmp)) {
+    1
+  } else {
+    as.vector(cm_nonPlasticFeedstockEmiShare_tmp)
+  }
   # read in share of plastics in feedstocks
-  s37_plasticsShare <- readGDX(gdx, "s37_plasticsShare") %>%
-    as.vector()
+  s37_plasticsShare_tmp <- readGDX(gdx, "s37_plasticsShare", react = "silent")
+  s37_plasticsShare <- if (is.null(s37_plasticsShare_tmp)) {
+    0
+  } else {
+    as.vector(s37_plasticsShare_tmp)
+  }
 
 
   # utility functions ----
@@ -446,7 +481,11 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
 
   # read historical shares of waste energy use derived from IEA energy balances
 
-  if (is.null(extraData)) {
+  # Initialize empty variables in case waste incineration data is unavailable
+  EmiWasteInc <- NULL
+  WasteInc_CDR <- NULL
+
+  if (!is.null(vm_incinerationEmi) && is.null(extraData)) {
     # download auxiliary file from RSE server
     regionHash <- digest::digest(sort(readGDX(gdx, "all_regi")), "xxhash32")
 
@@ -467,7 +506,7 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
     WasteShares <- magclass::collapseDim(WasteShares[, "y2019", ])
 
     unlink(f)
-  } else {
+  } else if (!is.null(vm_incinerationEmi)) {
     if (!file.exists(file.path(extraData, "emi_waste_shares.cs4r"))) {
       stop("Auxiliary file 'emi_waste_shares.cs4r' not found")
     }
@@ -1454,31 +1493,56 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
 
   # add subcategories of co2luc only if they already exist in the gdx
   if (!is.null(p_co2lucSub)) {
-    out <- mbind(
-      out,
-      setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentAR"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Reforestation (Mt CO2/yr)"),
-      setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentAgroforestry"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Agroforestry (Mt CO2/yr)"),
-      setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentTimber"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Timber (Mt CO2/yr)"),
-      setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentSCM"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Soil Carbon Management (Mt CO2/yr)"),
-      setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentPeat"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Peatland (Mt CO2/yr)"),
-      setNames(dimSums(p_co2lucSub[, , "co2lucNegUnintent"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|+|Unintentional (Mt CO2/yr)"),
-      setNames(dimSums(p_co2lucSub[, , "co2lucPos"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|+|Positive (Mt CO2/yr)")
-    )
+    # Only add subcategories if they exist in p_co2lucSub
+    tmp_out_list <- list()
+    luc_items <- getNames(p_co2lucSub, dim = 3)
 
-    # aggregates of co2luc subcategories
+    if ("co2lucNegIntentAR" %in% luc_items) {
+      tmp_out_list[[length(tmp_out_list) + 1]] <- setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentAR"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Reforestation (Mt CO2/yr)")
+    }
+    if ("co2lucNegIntentAgroforestry" %in% luc_items) {
+      tmp_out_list[[length(tmp_out_list) + 1]] <- setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentAgroforestry"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Agroforestry (Mt CO2/yr)")
+    }
+    if ("co2lucNegIntentTimber" %in% luc_items) {
+      tmp_out_list[[length(tmp_out_list) + 1]] <- setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentTimber"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Timber (Mt CO2/yr)")
+    }
+    if ("co2lucNegIntentSCM" %in% luc_items) {
+      tmp_out_list[[length(tmp_out_list) + 1]] <- setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentSCM"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Soil Carbon Management (Mt CO2/yr)")
+    }
+    if ("co2lucNegIntentPeat" %in% luc_items) {
+      tmp_out_list[[length(tmp_out_list) + 1]] <- setNames(dimSums(p_co2lucSub[, , "co2lucNegIntentPeat"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|Intentional|+|Peatland (Mt CO2/yr)")
+    }
+    if ("co2lucNegUnintent" %in% luc_items) {
+      tmp_out_list[[length(tmp_out_list) + 1]] <- setNames(dimSums(p_co2lucSub[, , "co2lucNegUnintent"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|+|Unintentional (Mt CO2/yr)")
+    }
+    if ("co2lucPos" %in% luc_items) {
+      tmp_out_list[[length(tmp_out_list) + 1]] <- setNames(dimSums(p_co2lucSub[, , "co2lucPos"], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|+|Positive (Mt CO2/yr)")
+    }
+
+    if (length(tmp_out_list) > 0) {
+      out <- do.call(mbind, c(list(out), tmp_out_list))
+    }
+
+    # aggregates of co2luc subcategories - only if intentional categories exist
     intentional <- c("co2lucNegIntentAR", "co2lucNegIntentAgroforestry", "co2lucNegIntentTimber", "co2lucNegIntentSCM", "co2lucNegIntentPeat")
-    out <- mbind(
-      out,
-      setNames(dimSums(p_co2lucSub[, , intentional], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|+|Intentional (Mt CO2/yr)")
-    )
+    intentional_exist <- intersect(intentional, luc_items)
 
-    out <- mbind(
-      out,
-      setNames(out[, , "Emi|CO2|Land-Use Change|Negative|+|Intentional (Mt CO2/yr)"] +
-        out[, , "Emi|CO2|Land-Use Change|Negative|+|Unintentional (Mt CO2/yr)"], "Emi|CO2|Land-Use Change|+|Negative (Mt CO2/yr)"),
-      setNames(out[, , "Emi|CO2|Land-Use Change|+|Positive (Mt CO2/yr)"] +
-        out[, , "Emi|CO2|Land-Use Change|Negative|+|Unintentional (Mt CO2/yr)"], "Emi|CO2|Gross|+|Land-Use Change (Mt CO2/yr)")
-    )
+    if (length(intentional_exist) > 0) {
+      out <- mbind(
+        out,
+        setNames(dimSums(p_co2lucSub[, , intentional_exist], dim = 3) * GtC_2_MtCO2, "Emi|CO2|Land-Use Change|Negative|+|Intentional (Mt CO2/yr)")
+      )
+
+      if ("co2lucNegUnintent" %in% luc_items && "co2lucPos" %in% luc_items) {
+        out <- mbind(
+          out,
+          setNames(out[, , "Emi|CO2|Land-Use Change|Negative|+|Intentional (Mt CO2/yr)"] +
+            out[, , "Emi|CO2|Land-Use Change|Negative|+|Unintentional (Mt CO2/yr)"], "Emi|CO2|Land-Use Change|+|Negative (Mt CO2/yr)"),
+          setNames(out[, , "Emi|CO2|Land-Use Change|+|Positive (Mt CO2/yr)"] +
+            out[, , "Emi|CO2|Land-Use Change|Negative|+|Unintentional (Mt CO2/yr)"], "Emi|CO2|Gross|+|Land-Use Change (Mt CO2/yr)")
+        )
+      }
+    }
   }
 
   ### 2.4 Waste CO2 emissions (IPCC category 5) ----
@@ -1486,25 +1550,45 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   # accounting of waste emissions which are not related to energy purposes
   # This includes waste incineration without energy recovery and negative emissions from
   # non-incinerated (non-fossil) plastics.
-  out <- mbind(
-    out,
-    setNames(
-      dimSums(mselect(vm_emiNonFosNonIncineratedPlastics * GtC_2_MtCO2,
-        all_enty = "co2"
-      ), dim = 3),
-      "Emi|CO2|Waste|+|Non-Incinerated Plastic (Mt CO2/yr)"
+  if (!is.null(vm_emiNonFosNonIncineratedPlastics)) {
+    out <- mbind(
+      out,
+      setNames(
+        dimSums(mselect(vm_emiNonFosNonIncineratedPlastics * GtC_2_MtCO2,
+          all_enty = "co2"
+        ), dim = 3),
+        "Emi|CO2|Waste|+|Non-Incinerated Plastic (Mt CO2/yr)"
+      )
     )
-  )
+  } else {
+    out <- mbind(
+      out,
+      setNames(
+        new.magpie(getItems(out, 1), getItems(out, 2), fill = 0),
+        "Emi|CO2|Waste|+|Non-Incinerated Plastic (Mt CO2/yr)"
+      )
+    )
+  }
 
-  out <- mbind(
-    out,
-    setNames(
-      dimSums(mselect(v37_emiNonPlasticWaste * GtC_2_MtCO2,
-        all_enty = "co2"
-      ), dim = 3),
-      "Emi|CO2|Waste|+|Non-plastic Waste (Mt CO2/yr)"
+  if (!is.null(v37_emiNonPlasticWaste)) {
+    out <- mbind(
+      out,
+      setNames(
+        dimSums(mselect(v37_emiNonPlasticWaste * GtC_2_MtCO2,
+          all_enty = "co2"
+        ), dim = 3),
+        "Emi|CO2|Waste|+|Non-plastic Waste (Mt CO2/yr)"
+      )
     )
-  )
+  } else {
+    out <- mbind(
+      out,
+      setNames(
+        new.magpie(getItems(out, 1), getItems(out, 2), fill = 0),
+        "Emi|CO2|Waste|+|Non-plastic Waste (Mt CO2/yr)"
+      )
+    )
+  }
 
   out <- mbind(
     out,
@@ -2378,13 +2462,22 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
     emi_Biochar <- dimSums(mselect(EmiPe2Se, all_enty1 = "sebiochar"), dim = 3)
   }
 
-  out <- mbind(
-    out,
-    # total negative land-use change emissions
-    setNames(
+  # Only add land-use change CDR if intentional category exists
+  if ("Emi|CO2|Land-Use Change|Negative|+|Intentional (Mt CO2/yr)" %in% getNames(out)) {
+    luc_cdr_emi <- setNames(
       out[, , "Emi|CO2|Land-Use Change|Negative|+|Intentional (Mt CO2/yr)"],
       "Emi|CO2|CDR|+|Land-Use Change (Mt CO2/yr)"
-    ),
+    )
+  } else {
+    luc_cdr_emi <- setNames(
+      new.magpie(getItems(out, 1), getItems(out, 2), fill = 0),
+      "Emi|CO2|CDR|+|Land-Use Change (Mt CO2/yr)"
+    )
+  }
+
+  out <- mbind(
+    out,
+    luc_cdr_emi,
     # total BECCS (pe2se + bio FE w CCS in industry and CDR demand sector + waste incineration BECCS)
     setNames(
       -out[, , "Carbon Management|Carbon Capture|Biomass (Mt CO2/yr)"]
@@ -3506,12 +3599,20 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
     # + Waste CO2 emissions from non-plastics
     setNames(
       dimSums(mselect(EmiMACEq[, , "ES"], sector = "waste"), dim = 3)
-      + dimSums(mselect(vm_emiNonFosNonIncineratedPlastics * GtC_2_MtCO2,
-          all_enty = "co2"
-        ), dim = 3)
-        + dimSums(mselect(v37_emiNonPlasticWaste * GtC_2_MtCO2,
-          all_enty = "co2"
-        ), dim = 3),
+      + if (!is.null(vm_emiNonFosNonIncineratedPlastics)) {
+        dimSums(mselect(vm_emiNonFosNonIncineratedPlastics * GtC_2_MtCO2,
+            all_enty = "co2"
+          ), dim = 3)
+      } else {
+        0
+      }
+        + if (!is.null(v37_emiNonPlasticWaste)) {
+          dimSums(mselect(v37_emiNonPlasticWaste * GtC_2_MtCO2,
+            all_enty = "co2"
+          ), dim = 3)
+        } else {
+          0
+        },
       "Emi|GHG|ESR|+|Waste (Mt CO2eq/yr)"
     ),
     setNames(

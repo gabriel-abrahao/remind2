@@ -36,12 +36,27 @@ reportCapacity <- function(gdx, regionSubsetList = NULL,
 
   # read parameters
   pm_eta_conv <- readGDX(gdx, "pm_eta_conv", field = "l", restore_zeros = FALSE)
+  if (is.null(pm_eta_conv)) {
+    warning("Variable 'pm_eta_conv' not found in GDX. The following outputs will be zero or missing: ",
+            "Cap|Hydrogen|(GWel), New Cap|Hydrogen|(GWel)")
+  }
+
   pm_prodCouple <- readGDX(gdx, c("pm_prodCouple", "p_prodCouple", "p_dataoc"), restore_zeros = FALSE, format = "first_found")
+  if (is.null(pm_prodCouple)) {
+    warning("Variable 'pm_prodCouple', 'p_prodCouple', or 'p_dataoc' not found in GDX. ",
+            "The following outputs will be zero or missing: Cap|Electricity|Biomass, Cap|Heat|* (coupled), ",
+            "New Cap|Electricity|Biomass, New Cap|Heat|* (coupled)")
+  }
 
   # read variables
   vm_cap      <- readGDX(gdx, name = c("vm_cap"), field = "l", format = "first_found") * 1000 # convert from TW to GW
   vm_deltaCap <- readGDX(gdx, name = c("vm_deltaCap"), field = "l", format = "first_found") * 1000 # convert from TW to GW
   v_earlyreti <- readGDX(gdx, name = c("vm_capEarlyReti", "v_capEarlyReti", "v_earlyreti"), field = "l", format = "first_found")
+  if (is.null(v_earlyreti)) {
+    warning("Variable 'vm_capEarlyReti', 'v_capEarlyReti', or 'v_earlyreti' not found in GDX. ",
+            "The following outputs will be zero or missing: Idle Cap|*, Total Cap|*")
+    v_earlyreti <- new.magpie(getRegions(vm_cap), getYears(vm_cap), magclass::getNames(vm_cap), fill = 0)
+  }
 
   # read scalars
   sm_c_2_co2 <- as.vector(readGDX(gdx, "sm_c_2_co2"))
@@ -67,15 +82,21 @@ reportCapacity <- function(gdx, regionSubsetList = NULL,
     vm_deltaCap <- modifyInvestmentVariables(vm_deltaCap)
   }
 
-  v_earlyreti <-   v_earlyreti[, ttot, ]
+  if (!is.null(v_earlyreti)) {
+    v_earlyreti <- v_earlyreti[, ttot, ]
+  }
   t2005 <- ttot[ttot > 2004]
 
   ####### fix negative values of prodCouple to 0 - using the lines from reportSE.R ##################
   #### adjust regional dimension of prodCouple
-  prodCouple <- new.magpie(getRegions(vm_cap), getYears(pm_prodCouple), magclass::getNames(pm_prodCouple), fill = 0)
-  prodCouple[getRegions(pm_prodCouple), , ] <- pm_prodCouple
-  getSets(prodCouple) <- getSets(pm_prodCouple)
-  prodCouple[prodCouple < 0] <- 0
+  if (!is.null(pm_prodCouple)) {
+    prodCouple <- new.magpie(getRegions(vm_cap), getYears(pm_prodCouple), magclass::getNames(pm_prodCouple), fill = 0)
+    prodCouple[getRegions(pm_prodCouple), , ] <- pm_prodCouple
+    getSets(prodCouple) <- getSets(pm_prodCouple)
+    prodCouple[prodCouple < 0] <- 0
+  } else {
+    prodCouple <- new.magpie(getRegions(vm_cap), getYears(vm_cap), magclass::getNames(vm_cap), fill = 0)
+  }
 
   ####### internal function for reporting ###########
   capacity_reporting <- function(prefix = "Cap") {
@@ -179,9 +200,17 @@ reportCapacity <- function(gdx, regionSubsetList = NULL,
       get_cap(c("bioh2c"),            "|Hydrogen|Biomass|+|w/ CC"),
       get_cap(c("bioh2"),             "|Hydrogen|Biomass|+|w/o CC"),
 
-      get_cap(c("elh2", "elh2VRE"),   "|Hydrogen|+|Electricity"),
-      get_cap(c("elh2", "elh2VRE"),   " (GWel)|Hydrogen|Electricity", factor = 1 / pm_eta_conv[, , "elh2"]), # convert to electric power GWel
+      get_cap(c("elh2", "elh2VRE"),   "|Hydrogen|+|Electricity")
+    )
 
+    # Add hydrogen electricity conversion only if pm_eta_conv exists
+    if (!is.null(pm_eta_conv)) {
+      cap_hydrogen <- mbind(cap_hydrogen,
+        get_cap(c("elh2", "elh2VRE"), " (GWel)|Hydrogen|Electricity", factor = 1 / pm_eta_conv[, , "elh2"]) # convert to electric power GWel
+      )
+    }
+
+    cap_hydrogen <- mbind(cap_hydrogen,
       get_cap(c("coalh2", "coalh2c", "gash2", "gash2c", "bioh2", "bioh2c", "elh2", "elh2VRE"), "|Hydrogen") # sum of the above, avoiding double counting
     )
 
@@ -242,13 +271,16 @@ reportCapacity <- function(gdx, regionSubsetList = NULL,
     
     # biochar
     s_tBC_2_TWa <- readGDX(gdx, name = "sm_tBC_2_TWa", format = "first_found", react = "silent") # Biochar calorific value
-    factor_biochar <- 1 / (s_tBC_2_TWa * 10^6 * 10^3) # convert from GWa to Mt Biochar: 1 / ([TWa/t BC] * 10^6 [t BC/ Mt BC] * 10^3 [GW/TW]) = 1 / [GWa/MtBC] = [Mt BC/ GWa]
-    unit_biochar <- ifelse(prefix == "Cap", " (Mt Biochar/yr)", " (Mt Biochar/yr/yr)") # determine the relevant unit
-    cap_biochar <- setNames(
-      dimSums(gms_data[, , c("biopyronly", "biopyrhe", "biopyrchp", "biopyrliq")], dim = 3) * factor_biochar,
-      paste0(prefix,"|Biochar", unit_biochar))
-    
-    reported_cap <- mbind(cap_electricity, cap_storage, cap_hydrogen, cap_heat, cap_gas, cap_liquids, cap_solids, cap_biochar)
+    if (!is.null(s_tBC_2_TWa)) {
+      factor_biochar <- 1 / (s_tBC_2_TWa * 10^6 * 10^3) # convert from GWa to Mt Biochar
+      unit_biochar <- ifelse(prefix == "Cap", " (Mt Biochar/yr)", " (Mt Biochar/yr/yr)") # determine the relevant unit
+      cap_biochar <- setNames(
+        dimSums(gms_data[, , c("biopyronly", "biopyrhe", "biopyrchp", "biopyrliq")], dim = 3) * factor_biochar,
+        paste0(prefix,"|Biochar", unit_biochar))
+      reported_cap <- mbind(cap_electricity, cap_storage, cap_hydrogen, cap_heat, cap_gas, cap_liquids, cap_solids, cap_biochar)
+    } else {
+      reported_cap <- mbind(cap_electricity, cap_storage, cap_hydrogen, cap_heat, cap_gas, cap_liquids, cap_solids)
+    }
 
     # carbon management
     if ("dac" %in% magclass::getNames(gms_data, dim = 1)) {
@@ -285,19 +317,23 @@ reportCapacity <- function(gdx, regionSubsetList = NULL,
 
 
   # Idle capacities and Total (sum of operating and idle)
-  reported_cap <- mbind(reported_cap, setNames(dimSums(vm_cap[, , "igcc"], dim = 3)    * v_earlyreti[, , "igcc"]    / (1 - v_earlyreti[, , "igcc"]) +
-                                               dimSums(vm_cap[, , "coalchp"], dim = 3) * v_earlyreti[, , "coalchp"] / (1 - v_earlyreti[, , "coalchp"]) +
-                                               dimSums(vm_cap[, , "pc"], dim = 3)      * v_earlyreti[, , "pc"]      / (1 - v_earlyreti[, , "pc"]),
-                       "Idle Cap|Electricity|Coal|w/o CC (GW)"))
-  reported_cap <- mbind(reported_cap, setNames(dimSums(vm_cap[, , "dot"], dim = 3)     * v_earlyreti[, , "dot"]     / (1 - v_earlyreti[, , "dot"]),
-                       "Idle Cap|Electricity|Oil|w/o CC (GW)"))
-  reported_cap <- mbind(reported_cap, setNames(dimSums(vm_cap[, , "ngcc"], dim = 3)    * v_earlyreti[, , "ngcc"]    / (1 - v_earlyreti[, , "ngcc"]) +
-                                               dimSums(vm_cap[, , "gaschp"], dim = 3)  * v_earlyreti[, , "gaschp"]  / (1 - v_earlyreti[, , "gaschp"]) +
-                                               dimSums(vm_cap[, , "ngt"], dim = 3)     * v_earlyreti[, , "ngt"]     / (1 - v_earlyreti[, , "ngt"]),
-                        "Idle Cap|Electricity|Gas|w/o CC (GW)"))
-  reported_cap <- mbind(reported_cap,
-    setNames(reported_cap[, , "Idle Cap|Electricity|Coal|w/o CC (GW)"] + reported_cap[, , "Cap|Electricity|Coal|+|w/o CC (GW)"], "Total Cap|Electricity|Coal|w/o CC (GW)"),
-    setNames(reported_cap[, , "Idle Cap|Electricity|Gas|w/o CC (GW)"]  + reported_cap[, , "Cap|Electricity|Gas|+|w/o CC (GW)"],  "Total Cap|Electricity|Gas|w/o CC (GW)"))
+  if (!is.null(v_earlyreti)) {
+    reported_cap <- mbind(reported_cap, setNames(dimSums(vm_cap[, , "igcc"], dim = 3)    * v_earlyreti[, , "igcc"]    / (1 - v_earlyreti[, , "igcc"]) +
+                                                 dimSums(vm_cap[, , "coalchp"], dim = 3) * v_earlyreti[, , "coalchp"] / (1 - v_earlyreti[, , "coalchp"]) +
+                                                 dimSums(vm_cap[, , "pc"], dim = 3)      * v_earlyreti[, , "pc"]      / (1 - v_earlyreti[, , "pc"]),
+                         "Idle Cap|Electricity|Coal|w/o CC (GW)"))
+    reported_cap <- mbind(reported_cap, setNames(dimSums(vm_cap[, , "dot"], dim = 3)     * v_earlyreti[, , "dot"]     / (1 - v_earlyreti[, , "dot"]),
+                         "Idle Cap|Electricity|Oil|w/o CC (GW)"))
+    reported_cap <- mbind(reported_cap, setNames(dimSums(vm_cap[, , "ngcc"], dim = 3)    * v_earlyreti[, , "ngcc"]    / (1 - v_earlyreti[, , "ngcc"]) +
+                                                 dimSums(vm_cap[, , "gaschp"], dim = 3)  * v_earlyreti[, , "gaschp"]  / (1 - v_earlyreti[, , "gaschp"]) +
+                                                 dimSums(vm_cap[, , "ngt"], dim = 3)     * v_earlyreti[, , "ngt"]     / (1 - v_earlyreti[, , "ngt"]),
+                          "Idle Cap|Electricity|Gas|w/o CC (GW)"))
+  }
+  if (!is.null(v_earlyreti)) {
+    reported_cap <- mbind(reported_cap,
+      setNames(reported_cap[, , "Idle Cap|Electricity|Coal|w/o CC (GW)"] + reported_cap[, , "Cap|Electricity|Coal|+|w/o CC (GW)"], "Total Cap|Electricity|Coal|w/o CC (GW)"),
+      setNames(reported_cap[, , "Idle Cap|Electricity|Gas|w/o CC (GW)"]  + reported_cap[, , "Cap|Electricity|Gas|+|w/o CC (GW)"],  "Total Cap|Electricity|Gas|w/o CC (GW)"))
+  }
 
 
   # Cumulative capacities = cumulating new capacities, starting with 0 in 2005

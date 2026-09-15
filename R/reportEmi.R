@@ -31,7 +31,7 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   # emissions calculation requires information from other reporting functions
   if (is.null(output)) {
     message("reportEmi executes reportFE")
-    output <- mbind(output, reportFE(gdx, regionSubsetList = regionSubsetList, t = t))
+    output <- reportFE(gdx, regionSubsetList = regionSubsetList, t = t)
   }
 
   # intialize varibles used in dplyr operations
@@ -100,16 +100,26 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
 
   ### emissions variables from REMIND (see definitions in core/equations.gms)
   # total GHG emissions
-  vm_co2eq <- readGDX(gdx, "vm_co2eq", field = "l", restore_zeros = FALSE)[, t, ]
+  vm_co2eq <- readGDX(gdx, "vm_co2eq", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_co2eq)) vm_co2eq <- vm_co2eq[, t, ]
+
   # total emissions by gas
-  vm_emiAllMkt <- readGDX(gdx, "vm_emiAllMkt", field = "l", restore_zeros = FALSE)[, t, ]
+  vm_emiAllMkt <- readGDX(gdx, "vm_emiAllMkt", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_emiAllMkt)) vm_emiAllMkt <- vm_emiAllMkt[, t, ]
+
   # total energy emissions from pe2se and se2fe conversions
-  vm_emiTeDetailMkt <- readGDX(gdx, c("vm_emiTeDetailMkt", "v_emiTeDetailMkt"), field = "l", restore_zeros = FALSE)
+  vm_emiTeDetailMkt <- readGDX(gdx, c("vm_emiTeDetailMkt", "v_emiTeDetailMkt"), field = "l", restore_zeros = FALSE, react = "silent")
+
   # total energy emissions in REMIND
-  vm_emiTeMkt <- readGDX(gdx, c("vm_emiTeMkt", "v_emiTeMkt"), field = "l", restore_zeros = FALSE, format = "first_found")[, t, ]
+  vm_emiTeMkt <- readGDX(gdx, c("vm_emiTeMkt", "v_emiTeMkt"), field = "l", restore_zeros = FALSE, format = "first_found", react = "silent")
+  if (!is.null(vm_emiTeMkt)) vm_emiTeMkt <- vm_emiTeMkt[, t, ]
+
   # emissions from MAC curves (non-energy emissions)
-  vm_emiMacSector <- readGDX(gdx, "vm_emiMacSector", field = "l", restore_zeros = FALSE)[, t, ]
-  p_co2lucSub <- readGDX(gdx, "p_co2lucSub", restore_zeros = TRUE, react = "silent")[, t, ]
+  vm_emiMacSector <- readGDX(gdx, "vm_emiMacSector", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_emiMacSector)) vm_emiMacSector <- vm_emiMacSector[, t, ]
+
+  p_co2lucSub <- readGDX(gdx, "p_co2lucSub", restore_zeros = TRUE, react = "silent")
+  if (!is.null(p_co2lucSub)) p_co2lucSub <- p_co2lucSub[, t, ]
   if (is.null(p_co2lucSub)) {
     warning("Variable 'p_co2lucSub' not found in GDX. ",
             "The following outputs will be zero: ",
@@ -118,52 +128,76 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
             "Emi|CO2|Land-Use Change|Negative, Emi|CO2|Gross|Land-Use Change (all land-use change subcategories)")
   }
   # F-Gases
-  vm_emiFgas <- readGDX(gdx, "vm_emiFgas", field = "l", restore_zeros = FALSE)[, t, ]
+  vm_emiFgas <- readGDX(gdx, "vm_emiFgas", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_emiFgas)) vm_emiFgas <- vm_emiFgas[, t, ]
   # Emissions from MACs (currently: all emissions outside of energy CO2 emissions)
-  vm_emiMacSector <- readGDX(gdx, "vm_emiMacSector", field = "l", restore_zeros = FALSE)
+  vm_emiMacSector <- readGDX(gdx, "vm_emiMacSector", field = "l", restore_zeros = FALSE, react = "silent")
+
   # energy extraction energy-related CO2 emissions
-  v_emiEnFuelEx <- readGDX(gdx, "v_emiEnFuelEx", field = "l", restore_zeros = FALSE)
+  v_emiEnFuelEx <- readGDX(gdx, "v_emiEnFuelEx", field = "l", restore_zeros = FALSE, react = "silent")
 
   ### for emissions of energy system technologies
   # emission factors of technologies
-  pm_emifac <- readGDX(gdx, "pm_emifac", restore_zeros = FALSE)[, t, ]
+  pm_emifac <- readGDX(gdx, "pm_emifac", restore_zeros = FALSE, react = "silent")
+  if (!is.null(pm_emifac)) pm_emifac <- pm_emifac[, t, ]
+
   # emissions factors of non-energy use
-  pm_emifacNonEnergy <- readGDX(gdx, "pm_emifacNonEnergy", restore_zeros = FALSE, react = "silent")[, t, ]
+  pm_emifacNonEnergy <- readGDX(gdx, "pm_emifacNonEnergy", restore_zeros = FALSE, react = "silent")
+  if (!is.null(pm_emifacNonEnergy)) pm_emifacNonEnergy <- pm_emifacNonEnergy[, t, ]
+
   # primary energy demand (pe2se emissions factors applied to)
-  vm_demPE <- readGDX(gdx, "vm_demPE", field = "l", restore_zeros = FALSE)[, t, ]
+  vm_demPE <- readGDX(gdx, "vm_demPE", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_demPE)) vm_demPE <- vm_demPE[, t, ]
+
   # final energy demand (se2fe emissions factors applied to)
-  vm_demFeSector <- readGDX(gdx, "vm_demFeSector", field = "l", restore_zeros = FALSE)[, t, ]
+  vm_demFeSector <- readGDX(gdx, "vm_demFeSector", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_demFeSector)) {
+    vm_demFeSector <- vm_demFeSector[, t, ]
+    ## Ensure backwards compatibility for release version 3.6.0 (can be removed with 3.7.0)
+    getNames(vm_demFeSector, dim = 3) <- tolower(getNames(vm_demFeSector, dim = 3))
+    ## End backwards compatibility
 
-  ## Ensure backwards compatibility for release version 3.6.0 (can be removed with 3.7.0)
-  getNames(vm_demFeSector, dim = 3) <- tolower(getNames(vm_demFeSector, dim = 3))
-  ## End backwards compatibility
-
-  # set NA values to 0,
-  vm_demFeSector[is.na(vm_demFeSector)] <- 0
+    # set NA values to 0,
+    vm_demFeSector[is.na(vm_demFeSector)] <- 0
+  }
   # FE demand per industry subsector
-  o37_demFeIndSub <- readGDX(gdx, "o37_demFeIndSub", restore_zeros = FALSE, react = "silent")[, t, ]
-  o37_demFeIndSub[is.na(o37_demFeIndSub)] <- 0
-
+  o37_demFeIndSub <- readGDX(gdx, "o37_demFeIndSub", restore_zeros = FALSE, react = "silent")
+  if (!is.null(o37_demFeIndSub)) {
+    o37_demFeIndSub <- o37_demFeIndSub[, t, ]
+    o37_demFeIndSub[is.na(o37_demFeIndSub)] <- 0
+  }
 
   # FE non-energy use
   vm_demFENonEnergySector <- readGDX(gdx, "vm_demFENonEnergySector",
     field = "l", spatial = 2,
     restore_zeros = FALSE, react = "silent"
-  )[, t, ]
-
-  vm_demFENonEnergySector <- magclass::matchDim(vm_demFENonEnergySector, vm_demFeSector)
-
+  )
+  if (!is.null(vm_demFENonEnergySector)) {
+    vm_demFENonEnergySector <- vm_demFENonEnergySector[, t, ]
+    if (!is.null(vm_demFeSector)) {
+      vm_demFENonEnergySector <- magclass::matchDim(vm_demFENonEnergySector, vm_demFeSector)
+    }
+  }
 
   # secondary energy production
-  vm_prodSe <- readGDX(gdx, "vm_prodSe", field = "l", restore_zeros = FALSE)
+  vm_prodSe <- readGDX(gdx, "vm_prodSe", field = "l", restore_zeros = FALSE, react = "silent")
   # parameter to calculate coupled production
   pm_prodCouple <- readGDX(gdx, "pm_prodCouple", field = "l", restore_zeros = FALSE)
 
   ### Carbon management variables
-  vm_emiCdr_co2 <- readGDX(gdx, "vm_emiCdr", field = "l", restore_zeros = FALSE)[, t, "co2"]
-  vm_emiCdrTeDetail <- readGDX(gdx, c("vm_emiCdrTeDetail", "v33_emi"), field = "l", restore_zeros = FALSE, react = "silent")[, t, ]
+  vm_emiCdr_co2 <- readGDX(gdx, "vm_emiCdr", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_emiCdr_co2)) {
+    vm_emiCdr_co2 <- vm_emiCdr_co2[, t, "co2"]
+  }
 
-  if (!"oae_ng" %in% getItems(vm_emiCdrTeDetail, dim = 3)) {
+  vm_emiCdrTeDetail <- readGDX(gdx, c("vm_emiCdrTeDetail", "v33_emi"), field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_emiCdrTeDetail)) {
+    vm_emiCdrTeDetail <- vm_emiCdrTeDetail[, t, ]
+  } else {
+    vm_emiCdrTeDetail <- new.magpie(getRegions(output), getYears(output), "te_placeholder", fill = 0)
+  }
+
+  if (!is.null(vm_emiCdrTeDetail) && !"oae_ng" %in% getItems(vm_emiCdrTeDetail, dim = 3)) {
     emiOAE <- new.magpie(getItems(vm_emiCdrTeDetail, "all_regi"),
       getItems(vm_emiCdrTeDetail, "ttot"),
       c("oae_ng", "oae_el"),
@@ -175,8 +209,14 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   }
 
   # CO2 captured from CDR-related activities that does not come from the atmosphere
-  vm_co2capture <- readGDX(gdx, c("vm_co2capture", "v_co2capture"), field = "l", restore_zeros = FALSE)[, t, ]
-  vm_co2capture <- dimSums(vm_co2capture) # backwards-comp: previously had multiple (irrelevant) dimensions in the third dimension with only one value
+  vm_co2capture <- readGDX(gdx, c("vm_co2capture", "v_co2capture"), field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_co2capture)) {
+    vm_co2capture <- vm_co2capture[, t, ]
+    vm_co2capture <- dimSums(vm_co2capture) # backwards-comp: previously had multiple (irrelevant) dimensions in the third dimension with only one value
+  } else {
+    warning("Variable 'vm_co2capture' or 'v_co2capture' not found in GDX. ",
+            "The following outputs will be zero or missing: Carbon Management related outputs, WasteInc_CDR")
+  }
 
   vm_co2emi_cdrFE_beforeCapture <- readGDX(gdx, c("vm_co2emi_cdrFE_beforeCapture", "v33_co2emi_non_atm_gas"), field = "l", restore_zeros = FALSE, react = "silent")[, t, ]
   v33_co2emi_non_atm_calcination <- readGDX(gdx, "v33_co2emi_non_atm_calcination", field = "l", restore_zeros = FALSE, react = "silent")[, t, ]
@@ -205,15 +245,35 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
   }
 
   # stored CO2
-  vm_co2CCS <- readGDX(gdx, "vm_co2CCS", field = "l", restore_zeros = FALSE)[, t, ]
+  vm_co2CCS <- readGDX(gdx, "vm_co2CCS", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_co2CCS)) {
+    vm_co2CCS <- vm_co2CCS[, t, ]
+  } else {
+    vm_co2CCS <- new.magpie(getRegions(output), getYears(output), "placeholder", fill = 0)
+  }
+
   # CO2 captured by industry sectors
-  vm_emiIndCCS <- readGDX(gdx, "vm_emiIndCCS", field = "l", restore_zeros = FALSE)[, t, ]
-  getSets(vm_emiIndCCS)[3] <- "secInd37" # relabel subsector dimension to match with other parameters
+  vm_emiIndCCS <- readGDX(gdx, "vm_emiIndCCS", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_emiIndCCS)) {
+    vm_emiIndCCS <- vm_emiIndCCS[, t, ]
+    getSets(vm_emiIndCCS)[3] <- "secInd37" # relabel subsector dimension to match with other parameters
+  } else {
+    warning("Variable 'vm_emiIndCCS' not found in GDX. Industrial CCS-related outputs will be zero or missing.")
+    # Create zero-filled substitute with appropriate dimensions for downstream calculations
+    vm_emiIndCCS <- new.magpie(getRegions(output), t, "placeholder", fill = 0)
+  }
 
   # CO2 released by CCU
-  vm_co2CCUshort <- readGDX(gdx, "vm_co2CCUshort", field = "l", restore_zeros = FALSE)[, t, ]
+  vm_co2CCUshort <- readGDX(gdx, "vm_co2CCUshort", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(vm_co2CCUshort)) {
+    vm_co2CCUshort <- vm_co2CCUshort[, t, ]
+  }
+
   # variable to release captured CO2 when no CCU capacities are standing anymore vent captured CO2
-  v_co2capturevalve <- readGDX(gdx, "v_co2capturevalve", field = "l", restore_zeros = FALSE)[, t, ]
+  v_co2capturevalve <- readGDX(gdx, "v_co2capturevalve", field = "l", restore_zeros = FALSE, react = "silent")
+  if (!is.null(v_co2capturevalve)) {
+    v_co2capturevalve <- v_co2capturevalve[, t, ]
+  }
 
   # maximum annual CO2 storage potential assumed
   # collapseDim removes 'cco2', 'ico2', and 'rlf' dimensions and keeps only 'ccsinjeon/ccsinjeoff'
@@ -388,14 +448,18 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
     field = "l",
     restore_zeros = FALSE, spatial = 2,
     react = "silent"
-  )[, t, ]
+  )
 
-  if (is.null(vm_incinerationCCS)) {
-    rm("vm_incinerationCCS")
-  } else if (!is.null(vm_incinerationEmi)) {
-    vm_incinerationCCS <- magclass::matchDim(vm_incinerationCCS, vm_incinerationEmi)
+  if (!is.null(vm_incinerationCCS)) {
+    vm_incinerationCCS <- vm_incinerationCCS[, t, ]
+    if (!is.null(vm_incinerationEmi)) {
+      vm_incinerationCCS <- magclass::matchDim(vm_incinerationCCS, vm_incinerationEmi)
+    } else {
+      rm("vm_incinerationCCS")
+    }
   } else {
-    rm("vm_incinerationCCS")
+    # variable doesn't exist in GDX, remove from environment
+    if (exists("vm_incinerationCCS")) rm("vm_incinerationCCS")
   }
 
   vm_nonIncineratedPlastics_tmp <- readGDX(gdx, "vm_nonIncineratedPlastics",
@@ -499,9 +563,14 @@ reportEmi <- function(gdx, output = NULL, regionSubsetList = NULL,
 
 
   # compute share of stored carbon from total captured carbon
-  p_share_CCS <- dimSums(vm_co2CCS, dim = 3, na.rm = TRUE) / vm_co2capture
-  p_share_CCS[is.infinite(p_share_CCS)] <- 0
-  p_share_CCS[is.na(p_share_CCS)] <- 0
+  if (!is.null(vm_co2capture)) {
+    p_share_CCS <- dimSums(vm_co2CCS, dim = 3, na.rm = TRUE) / vm_co2capture
+    p_share_CCS[is.infinite(p_share_CCS)] <- 0
+    p_share_CCS[is.na(p_share_CCS)] <- 0
+  } else {
+    # if vm_co2capture is not available, set share to 0
+    p_share_CCS <- new.magpie(getRegions(vm_co2CCS), getYears(vm_co2CCS), getNames(vm_co2CCS, dim = 1), fill = 0)
+  }
 
   ## Waste Incineration Emissions ----
 

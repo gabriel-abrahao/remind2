@@ -24,7 +24,7 @@ for (mv in magiccvar) {
 ```
 
 ## Internal parameterization vs. MAGICC7 AR6 600-member ensemble
-```
+```{r 07_climate/internal_vs_magicc}
 percentiles <- c(5, 10, 33, 50, 67, 90, 95)
 percentileVars <- paste0("MAGICC7 AR6|Surface Temperature (GSAT)|", sprintf("%.1fth", percentiles), " Percentile")
 mainVar <- "Temperature|Global Mean"
